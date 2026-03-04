@@ -64,37 +64,55 @@ namespace TrussModelBuilder.Control
 
     public void Run()
     {
-      // 01. Node.csv를 파싱하여 Node 정보를 가지고 온다.
+      Utils.Logger.LogDebug("[CsvParse] CSV 데이터 파싱을 시작합니다.");
+
       NodeCsvParse();
-      // 02. Element.csv를 파싱하여 Element 정보를 가지고 온다. 
+      Utils.Logger.LogDebug($"[CsvParse] Node 파싱 완료. 총 {this.nodeInstance.GetNodeCount()}개의 노드 확보.");
+
       ElementCsvParse();
-      // 03. Truss의 경계조건 설정. 여기서는 Z축으로 가장 낮은 값을 가지는 Node로 지정
+      Utils.Logger.LogDebug($"[CsvParse] Element 파싱 완료. 총 {this.elementInstance.GetCount()}개의 요소 확보.");
+
       BoundaryCondition();
+      Utils.Logger.LogDebug($"[CsvParse] 경계조건 설정 완료. Z축 최하단 노드 {BoundaryCondition_list.Count}개 추출.");
     }
 
     public void NodeCsvParse()
     {
       // CSV 읽어오기
       var lines = File.ReadAllLines(this.nodeCsv);
+      int currentLine = 0; // 오류 발생 위치 추적용
 
       foreach (var line in lines)
       {
-        string[] values = line.Split(',');
-        int nodeID = int.Parse(values[1]);
-        double X = double.Parse(values[2]);
-        double Y = double.Parse(values[3]);
-        double Z = double.Parse(values[4]);       
-
-        this.nodeInstance.AddWithID(nodeID, X, Y, Z);
-
-        // Leg Lifting의 순서를 legLiftingOrder에 저장
-        if (int.TryParse(values[5], out int legLiftingOrder))
+        currentLine++;
+        try
         {
-          if (!this.legLiftingOrder.ContainsKey(legLiftingOrder))
+          string[] values = line.Split(',');
+
+          // 헤더 등 빈칸이나 잘못된 값이 들어올 경우를 대비한 유효성 검사 추가 가능
+          if (values.Length < 5) continue;
+
+          int nodeID = int.Parse(values[1]);
+          double X = double.Parse(values[2]);
+          double Y = double.Parse(values[3]);
+          double Z = double.Parse(values[4]);
+
+          this.nodeInstance.AddWithID(nodeID, X, Y, Z);
+
+          // Leg Lifting의 순서를 legLiftingOrder에 저장
+          if (values.Length > 5 && int.TryParse(values[5], out int legLiftingOrder))
           {
-            this.legLiftingOrder[legLiftingOrder] = new List<int>();
+            if (!this.legLiftingOrder.ContainsKey(legLiftingOrder))
+            {
+              this.legLiftingOrder[legLiftingOrder] = new List<int>();
+            }
+            this.legLiftingOrder[legLiftingOrder].Add(nodeID);
           }
-          this.legLiftingOrder[legLiftingOrder].Add(nodeID);
+        }
+        catch (Exception ex)
+        {
+          // 어느 파일의 몇 번째 줄에서 파싱 에러가 발생했는지 구체적으로 로깅
+          Utils.Logger.LogError($"NodeCsvParse 오류: {this.nodeCsv} 파일의 {currentLine}번째 줄 파싱 실패. (내용: {line})", ex);
         }
       }
     }
@@ -149,6 +167,7 @@ namespace TrussModelBuilder.Control
         }
         else // Property 분류 작업
         {
+          bool isMatched = false;
           foreach (var key in PropertyConverReference.Keys)
           {
             if (PropertyInput.StartsWith(key))
@@ -160,11 +179,18 @@ namespace TrussModelBuilder.Control
               {
                 {"propertyName", propertyName},
                 {"Group", group }
-              }
-                ;
-              this.elementInstance.AddWithID(elementID, new List<int> { nodeA, nodeB }, propertyID, extraData); 
-            }          
-          }         
+              };
+              this.elementInstance.AddWithID(elementID, new List<int> { nodeA, nodeB }, propertyID, extraData);
+              isMatched = true;
+              break; // 매칭되었으면 더 이상 찾을 필요 없음
+            }
+          }
+
+          // 🔹 디버그: 매칭되는 Property가 없어 누락된 부재 확인
+          if (!isMatched)
+          {
+            Utils.Logger.LogDebug($"[CsvParse 경고] Element ID {elementID}의 Property('{PropertyInput}')가 변환 사전에 존재하지 않습니다.");
+          }
         }
       }
     }
@@ -174,8 +200,10 @@ namespace TrussModelBuilder.Control
       // Z축 기준 가장 낮은 값
       double minZ = this.nodeInstance.Min(node => node.Value.Z);
 
-      BoundaryCondition_list = this.nodeInstance.Where(n => n.Value.Z == minZ)
-        .Select(n => n.Key).ToList();     
+      double epsilon = 0.001;
+      BoundaryCondition_list = this.nodeInstance
+          .Where(n => Math.Abs(n.Value.Z - minZ) < epsilon)
+          .Select(n => n.Key).ToList();
 
     }
   }
