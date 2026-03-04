@@ -138,9 +138,11 @@ namespace TrussModelBuilder.Control
       }
 
       // 최종적으로 분할 대상 요소에 대해 SplitElementByNodes 호출
+      int splitCount = 0;
       foreach (var kv in elementsToSplit)
       {
         SplitElementByNodes(kv.Key, kv.Value);
+        splitCount++;
       }
 
       // 쪼개진 기존 Element 삭제 
@@ -148,6 +150,8 @@ namespace TrussModelBuilder.Control
       {
         this.elementInstance.Remove(ele.Key);
       }
+
+      Utils.Logger.LogDebug($"[Validator] 노드 간섭에 의한 요소 분할 처리 완료. 총 {splitCount}개의 원본 소가 분할되었습니다.");
 
     }
 
@@ -283,7 +287,7 @@ namespace TrussModelBuilder.Control
       {
         bool addedToGroup = false;
 
-        // 기존 그룹 중 하나라도 겹치는 Node가 있는지 확인
+        // 기존 그룹 중 나라도 겹치는 Node가 있는지 확인
         foreach (var group in groupedLegElements)
         {
           if (group.Any(node => ele.Value.NodeIDs.Contains(node)))
@@ -310,7 +314,7 @@ namespace TrussModelBuilder.Control
 
 
         // Distinct하고 Z 값을 기준으로 정렬한 후, group에 덮어씌움
-        // 순서는 Leg를 구성하는 Z축 기준 제일 낮은 node부터 순서대로 구성        
+        // 순서는 Leg를 구성하는 Z 기준 제일 낮은 node부터 순서대로 구성        
         groupedLegElements[i] = group.Distinct()
                                      .OrderBy(node => this.nodeInstance[node].Z)
                                      .ToList();
@@ -392,6 +396,8 @@ namespace TrussModelBuilder.Control
       {
         this.elementInstance.Remove(entry.Key);
       }
+
+      Utils.Logger.LogDebug($"[Validator] 커스텀 메쉬 생성(Girder/Column/Bracket/Leg) 완료. {customMeshInfo.Count}개의 부재가 {newElementList.Count}개의 세부 요소로 재구성되었습니다.");
     }
 
 
